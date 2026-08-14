@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Shimamura Export Scout Collector",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "開いているしまむらオンラインの商品一覧をScoutへ取り込みます。",
   "permissions": ["activeTab", "scripting"],
   "host_permissions": [
