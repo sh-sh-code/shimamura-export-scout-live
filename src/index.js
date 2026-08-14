@@ -126,6 +126,7 @@ export default {
     if (url.pathname === "/api/health") {
       return Response.json({
         ok: true,
+        build: "flyer-mirror-v1",
         mode: "live-source-scanner",
         automaticPublishing: false,
         shimamuraScanner: "trial",
