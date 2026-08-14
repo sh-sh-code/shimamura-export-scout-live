@@ -1,0 +1,57 @@
+name: Production smoke test
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "wrangler.jsonc"
+      - ".github/workflows/production-smoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-smoke
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Wait for the Cloudflare deployment
+        shell: bash
+        run: |
+          endpoint="https://shimamura-export-scout-live.y-shoshi49.workers.dev"
+          for attempt in {1..36}; do
+            health="$(curl --fail --silent --show-error --max-time 15 "$endpoint/api/health" || true)"
+            if [[ "$health" == *'"flyerVision":true'* ]]; then
+              echo "$health"
+              exit 0
+            fi
+            echo "Waiting for deployment ($attempt/36)"
+            sleep 10
+          done
+          echo "Timed out waiting for flyerVision=true"
+          exit 1
+
+      - name: Run a real production scan
+        shell: bash
+        run: |
+          endpoint="https://shimamura-export-scout-live.y-shoshi49.workers.dev"
+          curl --fail --silent --show-error --max-time 180 \
+            --request POST "$endpoint/api/scan" --output scan-result.json
+          node --input-type=module -e '
+            import fs from "node:fs";
+            const data = JSON.parse(fs.readFileSync("scan-result.json", "utf8"));
+            if (!data.ok || !data.persistence || !data.flyer) process.exit(1);
+            console.log(JSON.stringify({
+              ok: data.ok,
+              persistence: data.persistence,
+              discovered: data.discovered,
+              flyer: { state: data.flyer.state, discovered: data.flyer.discovered, detail: data.flyer.detail },
+              sources: data.sources.map(({ name, state, discovered }) => ({ name, state, discovered })),
+            }));
+          '
