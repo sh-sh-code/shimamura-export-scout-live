@@ -1,0 +1,16 @@
+{
+  "name": "shimamura-export-scout-live",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "wrangler deploy --dry-run",
+    "db:migrations:apply": "wrangler d1 migrations apply DB --remote",
+    "deploy": "npm run db:migrations:apply && wrangler deploy",
+    "types": "wrangler types"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260814.1",
+    "wrangler": "^4.123.0"
+  }
+}
