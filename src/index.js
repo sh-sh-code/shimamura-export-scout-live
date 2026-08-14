@@ -107,9 +107,10 @@ export default {
     if (url.pathname === "/api/scan" && request.method === "POST") {
       const database = env?.DB ?? null;
       if (database) await ensureDatabase(database);
+      const snapshot = await importGitHubSnapshot(database);
       const scanResults = await Promise.all(SHIMAMURA_SOURCES.map((source) => scanShimamuraSource(database, source)));
-      const discovered = scanResults.reduce((sum, result) => sum + result.discovered, 0);
-      return Response.json({ ok: true, discovered, sources: scanResults, persistence: Boolean(database) });
+      const discovered = snapshot.imported + scanResults.reduce((sum, result) => sum + result.discovered, 0);
+      return Response.json({ ok: true, discovered, snapshot, sources: scanResults, persistence: Boolean(database) });
     }
     if (url.pathname === "/api/approve" && request.method === "POST") {
       return Response.json({
@@ -145,11 +146,13 @@ export default {
       return;
     }
     await ensureDatabase(env.DB);
+    const snapshot = await importGitHubSnapshot(env.DB);
     const scanResults = await Promise.all(SHIMAMURA_SOURCES.map((source) => scanShimamuraSource(env.DB, source)));
     console.log(JSON.stringify({
       event: "scheduled_scan",
       cron: controller.cron,
-      discovered: scanResults.reduce((sum, result) => sum + result.discovered, 0),
+      discovered: snapshot.imported + scanResults.reduce((sum, result) => sum + result.discovered, 0),
+      snapshot: { state: snapshot.state, imported: snapshot.imported, observedAt: snapshot.observedAt },
       states: scanResults.map((result) => ({ name: result.name, state: result.state, discovered: result.discovered })),
     }));
   },
@@ -239,6 +242,79 @@ const SHIMAMURA_SOURCES = [
 ];
 
 const MAX_SOURCE_BYTES = 1_500_000;
+const MAX_SNAPSHOT_BYTES = 2_000_000;
+const GITHUB_SNAPSHOT_URL = "https://raw.githubusercontent.com/sh-sh-code/shimamura-export-scout/main/data/shimamura-products.json";
+
+async function persistProducts(db, products, sourceName) {
+  if (!db || !products.length) return;
+  const statements = products.slice(0, 160).map((product) => db.prepare(`INSERT INTO candidates (
+    source_url, source_name, source_price_jpy, source_image_urls, source_captured_at, title_ja,
+    category, comparable_query, sold_count, median_sold_usd, estimated_profit_jpy, roi_percent,
+    confidence, rank, status, updated_at
+  ) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, ?, 'unclassified', ?, 0, 0, 0, 0, 35, 'C', 'discovered', CURRENT_TIMESTAMP)
+  ON CONFLICT(source_url) DO UPDATE SET source_price_jpy=excluded.source_price_jpy,
+    source_image_urls=excluded.source_image_urls, source_captured_at=CURRENT_TIMESTAMP,
+    title_ja=excluded.title_ja, source_name=excluded.source_name, updated_at=CURRENT_TIMESTAMP`).bind(
+    product.url, product.sourceName || sourceName, product.priceJpy, JSON.stringify(product.imageUrls || []), product.title, product.title,
+  ));
+  for (let index = 0; index < statements.length; index += 50) {
+    await db.batch(statements.slice(index, index + 50));
+  }
+}
+
+async function importGitHubSnapshot(db) {
+  let state = "snapshot_unobserved";
+  let detail = null;
+  let observedAt = null;
+  let products = [];
+  try {
+    const response = await fetch(GITHUB_SNAPSHOT_URL, {
+      headers: { accept: "application/json" },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const sourceBody = await readTextLimited(response, MAX_SNAPSHOT_BYTES);
+    if (sourceBody.exceeded) throw new Error("snapshot exceeded size limit");
+    const snapshot = JSON.parse(sourceBody.text);
+    observedAt = typeof snapshot.observedAt === "string" ? snapshot.observedAt : null;
+    products = (Array.isArray(snapshot.products) ? snapshot.products : []).flatMap((product) => {
+      try {
+        const url = new URL(String(product.url || ""));
+        const priceJpy = Number(product.priceJpy);
+        const title = cleanText(product.title, 220);
+        if (url.hostname !== "www.shop-shimamura.com" || !title || !Number.isInteger(priceJpy) || priceJpy <= 0 || priceJpy > 1_000_000) return [];
+        const imageUrls = (Array.isArray(product.imageUrls) ? product.imageUrls : []).flatMap((value) => {
+          try {
+            const imageUrl = new URL(String(value));
+            return imageUrl.protocol === "https:" ? [imageUrl.toString()] : [];
+          } catch {
+            return [];
+          }
+        }).slice(0, 8);
+        return [{
+          url: url.toString(),
+          title,
+          priceJpy,
+          imageUrls,
+          sourceName: cleanText(product.sourceName, 120) || "GitHubブラウザ巡回",
+        }];
+      } catch {
+        return [];
+      }
+    }).slice(0, 160);
+    state = products.length ? "snapshot_observed" : "snapshot_empty";
+    detail = products.length ? null : "browser snapshot contains no products";
+    await persistProducts(db, products, "GitHubブラウザ巡回");
+  } catch (error) {
+    state = "snapshot_error";
+    detail = error instanceof Error ? error.message.slice(0, 240) : "unknown snapshot error";
+  }
+  if (db) {
+    await db.prepare(`INSERT INTO scan_runs (source_url, observation_state, http_status, discovered_count, detail)
+      VALUES (?, ?, ?, ?, ?)`).bind(GITHUB_SNAPSHOT_URL, state, null, products.length, detail).run();
+  }
+  return { state, imported: products.length, observedAt, detail, products: products.slice(0, 40) };
+}
 
 async function scanShimamuraSource(db, source) {
   let state = "unobserved";
@@ -283,18 +359,7 @@ async function scanShimamuraSource(db, source) {
     detail = error instanceof Error ? error.message.slice(0, 240) : "unknown fetch error";
   }
 
-  if (db && products.length) {
-    await db.batch(products.slice(0, 40).map((product) => db.prepare(`INSERT INTO candidates (
-      source_url, source_name, source_price_jpy, source_image_urls, source_captured_at, title_ja,
-      category, comparable_query, sold_count, median_sold_usd, estimated_profit_jpy, roi_percent,
-      confidence, rank, status, updated_at
-    ) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, ?, 'unclassified', ?, 0, 0, 0, 0, 35, 'C', 'discovered', CURRENT_TIMESTAMP)
-    ON CONFLICT(source_url) DO UPDATE SET source_price_jpy=excluded.source_price_jpy,
-      source_image_urls=excluded.source_image_urls, source_captured_at=CURRENT_TIMESTAMP,
-      title_ja=excluded.title_ja, updated_at=CURRENT_TIMESTAMP`).bind(
-      product.url, source.name, product.priceJpy, JSON.stringify(product.imageUrls), product.title, product.title,
-    )));
-  }
+  await persistProducts(db, products.slice(0, 40), source.name);
   if (db) {
     await db.prepare(`INSERT INTO scan_runs (source_url, observation_state, http_status, discovered_count, detail)
       VALUES (?, ?, ?, ?, ?)`).bind(source.url, state, httpStatus, products.length, detail).run();
