@@ -17,7 +17,7 @@ const html = `<!doctype html>
 <div class="shell">
  <aside class="side"><div class="logo"><div class="logoMark">S</div><div class="logoText"><b>SCOUT</b><small>JP → GLOBAL</small></div></div><nav class="nav"><p class="navLabel">WORKSPACE</p><button class="active" data-tab="candidates"><span class="icon">⌁</span><span>候補</span><b id="navCandidateCount">0</b></button><button data-tab="drafts"><span class="icon">▤</span><span>下書き</span><b id="navDraftCount">0</b></button><button data-tab="settings"><span class="icon">⌘</span><span>査定設定</span></button></nav><div class="watch"><strong><i class="dot"></i>試験運用</strong><p>しまむら・アベイル</p><small>結果はDBへ保存</small></div><div class="owner"><div class="avatar">自</div><div><b>Owner</b><small>承認者</small></div></div></aside>
  <main class="main">
-  <header class="top"><div><div class="eyebrow" id="eyebrow">DISCOVERY QUEUE</div><h1 id="pageTitle">販売候補</h1></div><div class="actions"><span class="note" id="note" hidden></span><button class="ghost" id="lastUpdated">最終更新 未実行</button><button class="primary" id="scan"><span>✦</span> 今すぐスキャン</button></div></header>
+  <header class="top"><div><div class="eyebrow" id="eyebrow">DISCOVERY QUEUE</div><h1 id="pageTitle">販売候補</h1></div><div class="actions"><span class="note" id="note" hidden></span><button class="ghost" id="lastUpdated">最終更新 未実行</button><button class="primary" id="scan"><span>↗</span> しまむらを開く</button></div></header>
   <section id="candidatesPage">
    <div class="stats"><article class="stat"><div class="statHead"><span>実取得候補</span><b class="pill">LIVE</b></div><strong>—</strong><small>ダミーを除外</small></article><article class="stat"><div class="statHead"><span>推定粗利 合計</span><b class="pill">査定済みのみ</b></div><strong>—</strong><small>eBay未接続</small></article><article class="stat"><div class="statHead"><span>平均ROI</span><b class="pill">査定済みのみ</b></div><strong>—</strong><small>未観測は計算しない</small></article><article class="stat"><div class="statHead"><span>未査定</span><b class="pill warn">確認</b></div><strong>—</strong><small>売却相場が未観測</small></article></div>
    <div class="grid"><section class="panel"><div class="tools"><label class="search">⌕<input id="search" placeholder="商品名・キャラクターで検索"></label><div class="filters"><button class="active" data-filter="すべて">すべて</button><button data-filter="A">Aランク</button><button data-filter="査定済み">査定済み</button><button data-filter="未査定">未査定</button></div></div><div class="listHead"><span>候補商品</span><span>国内価格</span><span>海外相場</span><span>推定利益</span></div><div id="rows"></div><div class="listFoot"><span id="count">0 / 0件を表示</span><button>すべて見る →</button></div></section><aside class="panel detail" id="detail"></aside></div>
@@ -40,9 +40,9 @@ let liveFilter="すべて";
 let livePersistence=false;
 const liveYen=function(value){return new Intl.NumberFormat("ja-JP",{style:"currency",currency:"JPY",maximumFractionDigits:0}).format(Number(value)||0)};
 const liveEsc=function(value){const entities={38:"&amp;",60:"&lt;",62:"&gt;",34:"&quot;",39:"&#39;"};return String(value==null?"":value).replace(/[&<>"']/g,function(char){return entities[char.charCodeAt(0)]})};
-function mapCandidate(row,index){let images=[];try{images=JSON.parse(row.source_image_urls||"[]")}catch(error){images=[]}const sold=Number(row.sold_count)||0;const median=Number(row.median_sold_usd)||0;const appraised=sold>0&&median>0;return{id:Number(row.id),rank:appraised?String(row.rank||"C"):"C",status:appraised?"査定済み":"未査定",brand:row.source_name||"しまむら",title:row.title_ja||"商品名未取得",en:appraised?(row.comparable_query||""):"eBay相場 未観測",cost:Number(row.source_price_jpy)||0,usd:median,sold:sold,profit:Number(row.estimated_profit_jpy)||0,roi:Number(row.roi_percent)||0,confidence:Number(row.confidence)||0,color:["coral","violet","sky","sand"][index%4],glyph:String(row.title_ja||"品").slice(0,1),source:row.source_url,images:images,capturedAt:row.source_captured_at,appraised:appraised}}
+function mapCandidate(row,index){let images=[];let variants=[];try{images=JSON.parse(row.source_image_urls||"[]")}catch(error){images=[]}try{variants=JSON.parse(row.variant_summary||"[]")}catch(error){variants=[]}const sold=Number(row.sold_count)||0;const median=Number(row.median_sold_usd)||0;const appraised=sold>0&&median>0;return{id:Number(row.id),rank:appraised?String(row.rank||"C"):"C",status:appraised?"査定済み":"未査定",brand:row.source_name||"しまむら",title:row.title_ja||"商品名未取得",en:appraised?(row.comparable_query||""):"eBay相場 未観測",cost:Number(row.source_price_jpy)||0,usd:median,sold:sold,profit:Number(row.estimated_profit_jpy)||0,roi:Number(row.roi_percent)||0,confidence:Number(row.confidence)||0,color:["coral","violet","sky","sand"][index%4],glyph:String(row.title_ja||"品").slice(0,1),source:row.source_url,images:images,availability:row.availability||"unknown",variants:variants,itemCode:row.source_item_code||"",capturedAt:row.source_captured_at,appraised:appraised}}
 function ensureScanStatus(){let node=document.querySelector("#scanStatus");if(node)return node;node=document.createElement("div");node.id="scanStatus";node.style.cssText="margin:13px 22px 0;padding:12px 14px;border:1px solid #dfe6e2;border-radius:9px;background:#fff;color:#5f6c66;font-size:10px;line-height:1.6";document.querySelector("#candidatesPage .grid").before(node);return node}
-function renderScanStatus(rows,message){const node=ensureScanStatus();if(message){node.innerHTML="<b>"+liveEsc(message)+"</b>";return}if(!rows||!rows.length){node.innerHTML="<b>まだ本番スキャンを実行していません。</b> 「今すぐスキャン」で公式チラシAI読取と4つの商品監視URLを確認します。";return}const labels={observed:"取得成功",cached:"解析済み",ai_empty:"AI読取0件",ai_error:"AI読取失敗",ai_unavailable:"AI未接続",blocked:"アクセス制限",http_error:"HTTPエラー",invalid_response:"想定外の応答",parse_unobserved:"ページ取得・商品解析不能",request_error:"通信失敗",unobserved:"未観測"};const last=rows[0].observed_at?new Date(String(rows[0].observed_at).replace(" ","T")+"Z"):null;document.querySelector("#lastUpdated").textContent=last&&!Number.isNaN(last.getTime())?"最終更新 "+last.toLocaleString("ja-JP",{timeZone:"Asia/Tokyo",month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"}):"最終更新 記録あり";node.innerHTML="<b>直近スキャン</b>　"+rows.slice(0,5).map(function(row){return liveEsc(labels[row.observation_state]||row.observation_state)+" "+Number(row.discovered_count||0)+"件"}).join(" ／ ")}
+function renderScanStatus(rows,message){const node=ensureScanStatus();if(message){node.innerHTML="<b>"+liveEsc(message)+"</b>";return}if(!rows||!rows.length){node.innerHTML="<b>オンライン商品はまだ取り込まれていません。</b> 右上の「しまむらを開く」から商品一覧を開き、Scout拡張機能を実行してください。";return}const labels={browser_import:"オンライン取込",snapshot_observed:"ブラウザ同期",observed:"取得成功",cached:"解析済み",blocked:"アクセス制限",http_error:"HTTPエラー",invalid_response:"想定外の応答",parse_unobserved:"ページ取得・商品解析不能",request_error:"通信失敗",unobserved:"未観測"};const last=rows[0].observed_at?new Date(String(rows[0].observed_at).replace(" ","T")+"Z"):null;document.querySelector("#lastUpdated").textContent=last&&!Number.isNaN(last.getTime())?"最終更新 "+last.toLocaleString("ja-JP",{timeZone:"Asia/Tokyo",month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"}):"最終更新 記録あり";node.innerHTML="<b>直近取込</b>　"+rows.slice(0,5).map(function(row){return liveEsc(labels[row.observation_state]||row.observation_state)+" "+Number(row.discovered_count||0)+"件"}).join(" ／ ")}
 function updateSummary(){const appraised=liveItems.filter(function(item){return item.appraised});const profit=appraised.reduce(function(sum,item){return sum+item.profit},0);const avg=appraised.length?Math.round(appraised.reduce(function(sum,item){return sum+item.roi},0)/appraised.length):null;const strong=document.querySelectorAll(".stats .stat strong");strong[0].textContent=String(liveItems.length);strong[1].textContent=appraised.length?liveYen(profit):"—";strong[2].textContent=avg==null?"—":avg+"%";strong[3].textContent=String(liveItems.length-appraised.length);document.querySelector("#navCandidateCount").textContent=String(liveItems.length);document.querySelector("#navDraftCount").textContent=String(liveDrafts.length)}
 function renderLiveRows(){const q=document.querySelector("#search").value.toLowerCase();const visible=liveItems.filter(function(item){const text=(item.title+" "+item.en+" "+item.brand).toLowerCase();return text.includes(q)&&(liveFilter==="すべて"||liveFilter==="A"&&item.rank==="A"||item.status===liveFilter)});if(!visible.length){document.querySelector("#rows").innerHTML='<div style="padding:34px 18px;text-align:center;color:#77827d;font-size:10px"><b style="display:block;color:#33423c;margin-bottom:7px">実取得の商品候補はまだありません</b>スキャン結果が0件でも、取得失敗を在庫0とは扱いません。</div>'}else{document.querySelector("#rows").innerHTML=visible.map(function(item){const market=item.appraised?"$"+item.usd.toFixed(2):"—";const profit=item.appraised?"+"+liveYen(item.profit):"未査定";return '<button class="row '+(item.id===liveActive?'active':'')+'" data-live-id="'+item.id+'"><div class="thumb '+item.color+'"><span class="rank">'+liveEsc(item.rank)+'</span><span class="glyph">'+liveEsc(item.glyph)+'</span></div><div class="copy"><div class="badges"><span>'+liveEsc(item.brand)+'</span><i class="'+(item.appraised?'good':'check')+'">'+liveEsc(item.status)+'</i></div><b>'+liveEsc(item.title)+'</b><small>'+liveEsc(item.en)+'</small></div><div class="money"><b>'+liveYen(item.cost)+'</b><small>取得価格</small></div><div class="money"><b>'+market+'</b><small>'+(item.appraised?item.sold+"件 sold":"未観測")+'</small></div><div class="profit"><b>'+profit+'</b><small>'+(item.appraised?"ROI "+item.roi+"%":"eBay未接続")+'</small></div></button>'}).join("")}document.querySelector("#count").textContent=visible.length+" / "+liveItems.length+"件を表示";document.querySelectorAll("[data-live-id]").forEach(function(node){node.onclick=function(){liveActive=Number(node.dataset.liveId);renderLiveRows();renderLiveDetail()}})}
 function renderLiveDetail(){const item=liveItems.find(function(row){return row.id===liveActive});if(!item){document.querySelector("#detail").innerHTML='<div style="padding:34px 22px;color:#6f7b76;font-size:10px;line-height:1.7"><b style="display:block;color:#26362f;font-size:14px;margin-bottom:8px">候補がまだありません</b>まずスキャンを実行してください。取得できなかった場合は、上の直近スキャン欄に理由を表示します。</div>';return}const photos=item.images.length?item.images.slice(0,4).map(function(url,index){return '<div class="photo"><img src="'+liveEsc(url)+'" alt="商品画像 '+(index+1)+'" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover"></div>'}).join(""):'<div class="photo '+item.color+'"><b>画像未取得</b></div>';const market=item.appraised?"$"+item.usd.toFixed(2):"未観測";const profit=item.appraised?"利益 +"+liveYen(item.profit):"利益は未計算";const draftTitle="Japan exclusive "+item.title;const draftDescription=["Authentic item sourced from a Japanese retailer.","","Item: "+item.title,"Source: Japan","","Please verify stock, measurements, image usage, and condition before publishing."].join("\\n");document.querySelector("#detail").innerHTML='<div class="detailScroll"><div class="detailTop"><div><span class="rankTag">'+(item.appraised?"RANK "+liveEsc(item.rank):"未査定")+'</span><small>'+(item.appraised?"一致精度 "+item.confidence+"%":"eBay売却相場 未観測")+'</small></div></div><h2>'+liveEsc(item.title)+'</h2><a class="sourceLink" href="'+liveEsc(item.source)+'" target="_blank" rel="noreferrer">元の商品ページ ↗</a><div class="photos">'+photos+'</div><div class="sourceMeta"><span>取得画像 '+item.images.length+'枚</span><small>'+liveEsc(item.capturedAt||"")+'</small></div><section class="card"><div class="cardHead"><div><span>自動査定</span><small>未観測値を0として扱いません</small></div><b>'+profit+'</b></div><div class="rail"><div><span>仕入れ</span><b>'+liveYen(item.cost)+'</b></div><i>→</i><div><span>販売相場</span><b>'+market+'</b></div><i>→</i><div class="positive"><span>ROI</span><b>'+(item.appraised?item.roi+"%":"—")+'</b></div></div><div class="evidence"><span>sold '+(item.appraised?item.sold+"件":"未観測")+'</span><span>eBay Product Research '+(item.appraised?"取得済み":"未接続")+'</span></div></section><section class="card draft"><div class="cardHead"><div><span>出品下書き</span><small>公開処理はありません</small></div><button class="ready">自動生成</button></div><label>英語タイトル <span id="chars">'+draftTitle.length+'/80</span><input maxlength="80" id="draftTitle" value="'+liveEsc(draftTitle)+'"></label><div class="draftGrid"><label>販売価格 (USD)<input id="draftPrice" value="'+(item.appraised?item.usd.toFixed(2):"")+'" placeholder="相場接続後に自動入力"></label><label>数量<input value="1" readonly></label></div><label>商品説明<textarea id="draftDescription" rows="7">'+liveEsc(draftDescription)+'</textarea></label><label class="checkLabel"><input type="checkbox" id="confirm"><span>商品・在庫・画像利用条件を自分で確認しました</span></label></section></div><div class="detailActions"><button class="secondary" id="saveDraft">下書きを保存</button><button class="approve" id="approve" disabled>出品を承認 <span>↗</span></button><small>eBay未接続のため、外部公開は実行されません</small></div>';const confirm=document.querySelector("#confirm");const approve=document.querySelector("#approve");const title=document.querySelector("#draftTitle");confirm.onchange=function(){approve.disabled=!confirm.checked};title.oninput=function(){document.querySelector("#chars").textContent=title.value.length+"/80"};document.querySelector("#saveDraft").onclick=async function(){if(!livePersistence){liveToast("D1接続後に下書きを保存できます");return}const price=Number(document.querySelector("#draftPrice").value);if(!price){liveToast("販売価格を入力してください");return}const response=await fetch("/api/drafts",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({candidateId:item.id,titleEn:title.value,descriptionEn:document.querySelector("#draftDescription").value,listingPriceUsd:price,sourceAcknowledged:confirm.checked})});liveToast(response.ok?"下書きをDBへ保存しました":"下書きの保存に失敗しました");if(response.ok)await loadLiveState()};approve.onclick=function(){document.querySelector("#modalTitle").textContent=title.value;document.querySelector("#modalPrice").textContent="$"+document.querySelector("#draftPrice").value;document.querySelector("#modal").classList.add("open")}}
@@ -54,7 +54,7 @@ function liveToast(message){const node=document.querySelector("#note");node.hidd
 document.querySelectorAll(".nav button").forEach(function(button){button.onclick=function(){document.querySelectorAll(".nav button").forEach(function(other){other.classList.toggle("active",other===button)});const tab=button.dataset.tab;document.querySelector("#candidatesPage").style.display=tab==="candidates"?"block":"none";document.querySelector("#draftsPage").classList.toggle("active",tab==="drafts");document.querySelector("#settingsPage").classList.toggle("active",tab==="settings");const labels={candidates:["DISCOVERY QUEUE","販売候補"],drafts:["READY FOR REVIEW","出品下書き"],settings:["PROFIT MODEL","査定設定"]};document.querySelector("#eyebrow").textContent=labels[tab][0];document.querySelector("#pageTitle").textContent=labels[tab][1]}});
 document.querySelectorAll(".filters button").forEach(function(button){button.onclick=function(){liveFilter=button.dataset.filter;document.querySelectorAll(".filters button").forEach(function(other){other.classList.toggle("active",other===button)});renderLiveRows()}});
 document.querySelector("#search").oninput=renderLiveRows;
-document.querySelector("#scan").onclick=async function(event){const button=event.currentTarget;button.disabled=true;button.innerHTML="<span>✦</span> スキャン中…";renderScanStatus([],"公式チラシAI読取と4つの監視URLを確認しています。最大45秒ほどかかります。");try{const response=await fetch("/api/scan",{method:"POST"});const result=await response.json();if(!response.ok)throw new Error(result.error||"scan failed");await loadLiveState();if(!liveItems.length&&!result.persistence){liveItems=temporaryRowsFromScan(result).map(mapCandidate);liveActive=liveItems[0]?liveItems[0].id:null;updateSummary();renderLiveRows();renderLiveDetail()}const observed=result.sources.filter(function(row){return row.state==="observed"}).length;const storage=result.persistence?"DB保存済み":"一時表示（D1未接続）";const summary=result.discovered+"件発見／取得成功 "+observed+"経路／未観測 "+(result.sources.length-observed)+"経路／"+storage;renderScanStatus([],summary);liveToast(summary)}catch(error){renderScanStatus([],"スキャンに失敗しました。既存データは消していません。");liveToast("スキャンに失敗しました")}finally{button.disabled=false;button.innerHTML="<span>✦</span> 今すぐスキャン"}};
+document.querySelector("#scan").onclick=function(){window.open("https://www.shop-shimamura.com/disp/itemlist/?b=shimamura&new=1","_blank","noopener,noreferrer");liveToast("商品一覧を開きました。ChromeのScout拡張機能を押して取り込んでください")};
 document.querySelector("#saveSettings").onclick=async function(){const ids=["fx","fee","intlShipping","domesticShipping","ddp","returnReserve","minProfit","minRoi","minSold"];const values=ids.map(function(id){return Number(document.querySelector("#"+id).value)});const response=await fetch("/api/settings",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({fxJpyPerUsd:values[0],marketplaceFeePercent:values[1],internationalShippingJpy:values[2],domesticShippingJpy:values[3],ddpReserveJpy:values[4],returnReservePercent:values[5],minimumProfitJpy:values[6],minimumRoiPercent:values[7],minimumSoldCount:values[8]})});liveToast(response.ok?"査定条件を保存しました":"設定の保存に失敗しました")};
 document.querySelector("#back").onclick=function(){document.querySelector("#modal").classList.remove("open")};document.querySelector("#connect").onclick=function(){document.querySelector("#modal").classList.remove("open");document.querySelector('[data-tab="settings"]').click()};document.querySelector("#modal").onclick=function(event){if(event.target.id==="modal")event.currentTarget.classList.remove("open")};
 loadLiveState().catch(function(){renderScanStatus([],"DBの読み込みに失敗しました。再読み込みしてください。");renderLiveRows();renderLiveDetail()});
@@ -64,12 +64,42 @@ loadLiveState().catch(function(){renderScanStatus([],"DBの読み込みに失敗
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    if (url.pathname === "/api/browser-import" && request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: extensionCorsHeaders(request) });
+    }
+    if (url.pathname === "/api/browser-import" && request.method === "POST") {
+      const headers = extensionCorsHeaders(request);
+      const origin = request.headers.get("origin") || "";
+      if (origin && origin !== url.origin && !origin.startsWith("chrome-extension://")) {
+        return Response.json({ error: "origin not allowed" }, { status: 403, headers });
+      }
+      const contentLength = Number(request.headers.get("content-length") || 0);
+      if (contentLength > 2_000_000) return Response.json({ error: "payload too large" }, { status: 413, headers });
+      if (!env?.DB) return Response.json({ error: "database unavailable" }, { status: 503, headers });
+      let body;
+      try {
+        body = await request.json();
+      } catch {
+        return Response.json({ error: "invalid json" }, { status: 400, headers });
+      }
+      const products = normalizeBrowserProducts(body);
+      if (!products.length) return Response.json({ error: "no valid online products" }, { status: 400, headers });
+      await ensureDatabase(env.DB);
+      await persistProducts(env.DB, products, "しまむらオンライン（Chrome取得）");
+      await env.DB.prepare(`INSERT INTO scan_runs (source_url, observation_state, http_status, discovered_count, detail)
+        VALUES (?, 'browser_import', 200, ?, ?)`).bind(
+        "https://www.shop-shimamura.com/",
+        products.length,
+        cleanText(body?.pageUrl, 500) || "Chrome extension import",
+      ).run();
+      return Response.json({ ok: true, imported: products.length, persistence: true }, { headers });
+    }
     if (url.pathname === "/api/state") {
       if (request.method !== "GET") return Response.json({ error: "method not allowed" }, { status: 405 });
       if (!env?.DB) return Response.json({ candidates: [], drafts: [], settings: DEFAULT_SETTINGS, scanRuns: [], persistence: false });
       await ensureDatabase(env.DB);
       const [candidateResult, draftResult, settingsResult, scanResult] = await Promise.all([
-        env.DB.prepare("SELECT * FROM candidates WHERE status <> 'demo' AND source_url NOT LIKE '%#demo-%' ORDER BY estimated_profit_jpy DESC, id DESC LIMIT 100").all(),
+        env.DB.prepare("SELECT * FROM candidates WHERE status <> 'demo' AND source_url NOT LIKE '%#demo-%' AND source_name NOT LIKE '%チラシ%' ORDER BY estimated_profit_jpy DESC, id DESC LIMIT 100").all(),
         env.DB.prepare("SELECT * FROM drafts ORDER BY updated_at DESC LIMIT 100").all(),
         env.DB.prepare("SELECT * FROM appraisal_settings WHERE id = 1").first(),
         env.DB.prepare("SELECT * FROM scan_runs ORDER BY observed_at DESC, id DESC LIMIT 20").all(),
@@ -108,13 +138,9 @@ export default {
       const database = env?.DB ?? null;
       if (database) await ensureDatabase(database);
       const snapshot = await importGitHubSnapshot(database);
-      const [flyer, directResults] = await Promise.all([
-        scanOfficialFlyer(database, env?.AI),
-        Promise.all(SHIMAMURA_SOURCES.map((source) => scanShimamuraSource(database, source))),
-      ]);
-      const scanResults = [flyer, ...directResults];
+      const scanResults = await Promise.all(SHIMAMURA_SOURCES.map((source) => scanShimamuraSource(database, source)));
       const discovered = snapshot.imported + scanResults.reduce((sum, result) => sum + result.discovered, 0);
-      return Response.json({ ok: true, discovered, snapshot, flyer, sources: scanResults, persistence: Boolean(database) });
+      return Response.json({ ok: true, discovered, snapshot, sources: scanResults, persistence: Boolean(database) });
     }
     if (url.pathname === "/api/approve" && request.method === "POST") {
       return Response.json({
@@ -126,11 +152,12 @@ export default {
     if (url.pathname === "/api/health") {
       return Response.json({
         ok: true,
-        build: "flyer-tiles-v3",
-        mode: "live-source-scanner",
+        build: "browser-import-v1",
+        mode: "browser-assisted-online-scanner",
         automaticPublishing: false,
-        shimamuraScanner: "trial",
-        flyerVision: Boolean(env?.AI),
+        shimamuraScanner: "chrome-extension",
+        flyerVision: false,
+        browserImport: true,
         ebayConnector: false,
         persistence: Boolean(env?.DB),
       });
@@ -153,17 +180,12 @@ export default {
     }
     await ensureDatabase(env.DB);
     const snapshot = await importGitHubSnapshot(env.DB);
-    const [flyer, directResults] = await Promise.all([
-      scanOfficialFlyer(env.DB, env?.AI),
-      Promise.all(SHIMAMURA_SOURCES.map((source) => scanShimamuraSource(env.DB, source))),
-    ]);
-    const scanResults = [flyer, ...directResults];
+    const scanResults = await Promise.all(SHIMAMURA_SOURCES.map((source) => scanShimamuraSource(env.DB, source)));
     console.log(JSON.stringify({
       event: "scheduled_scan",
       cron: controller.cron,
       discovered: snapshot.imported + scanResults.reduce((sum, result) => sum + result.discovered, 0),
       snapshot: { state: snapshot.state, imported: snapshot.imported, observedAt: snapshot.observedAt },
-      flyer: { state: flyer.state, discovered: flyer.discovered },
       states: scanResults.map((result) => ({ name: result.name, state: result.state, discovered: result.discovered })),
     }));
   },
@@ -194,6 +216,9 @@ async function ensureDatabase(db) {
       source_price_jpy INTEGER NOT NULL,
       source_image_urls TEXT NOT NULL DEFAULT '[]',
       source_captured_at TEXT NOT NULL,
+      availability TEXT NOT NULL DEFAULT 'unknown',
+      variant_summary TEXT NOT NULL DEFAULT '[]',
+      source_item_code TEXT,
       title_ja TEXT NOT NULL,
       category TEXT NOT NULL,
       comparable_query TEXT NOT NULL,
@@ -264,18 +289,76 @@ const FLYER_VISION_MODEL = "@cf/google/gemma-4-26b-a4b-it";
 async function persistProducts(db, products, sourceName) {
   if (!db || !products.length) return;
   const statements = products.slice(0, 160).map((product) => db.prepare(`INSERT INTO candidates (
-    source_url, source_name, source_price_jpy, source_image_urls, source_captured_at, title_ja,
+    source_url, source_name, source_price_jpy, source_image_urls, source_captured_at, availability,
+    variant_summary, source_item_code, title_ja,
     category, comparable_query, sold_count, median_sold_usd, estimated_profit_jpy, roi_percent,
     confidence, rank, status, updated_at
-  ) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, ?, 'unclassified', ?, 0, 0, 0, 0, 35, 'C', 'discovered', CURRENT_TIMESTAMP)
+  ) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?, 'unclassified', ?, 0, 0, 0, 0, 35, 'C', 'discovered', CURRENT_TIMESTAMP)
   ON CONFLICT(source_url) DO UPDATE SET source_price_jpy=excluded.source_price_jpy,
     source_image_urls=excluded.source_image_urls, source_captured_at=CURRENT_TIMESTAMP,
-    title_ja=excluded.title_ja, source_name=excluded.source_name, updated_at=CURRENT_TIMESTAMP`).bind(
-    product.url, product.sourceName || sourceName, product.priceJpy, JSON.stringify(product.imageUrls || []), product.title, product.title,
+    availability=excluded.availability, variant_summary=excluded.variant_summary,
+    source_item_code=excluded.source_item_code, title_ja=excluded.title_ja,
+    source_name=excluded.source_name, updated_at=CURRENT_TIMESTAMP`).bind(
+    product.url, product.sourceName || sourceName, product.priceJpy, JSON.stringify(product.imageUrls || []),
+    product.availability || "unknown", JSON.stringify(product.variants || []), product.itemCode || null,
+    product.title, product.title,
   ));
   for (let index = 0; index < statements.length; index += 50) {
     await db.batch(statements.slice(index, index + 50));
   }
+}
+
+function normalizeBrowserProducts(payload) {
+  const seen = new Set();
+  return (Array.isArray(payload?.products) ? payload.products : []).slice(0, 200).flatMap((product) => {
+    try {
+      const url = new URL(String(product?.url || ""));
+      if (url.protocol !== "https:" || url.hostname !== "www.shop-shimamura.com") return [];
+      url.hash = "";
+      const title = cleanText(product?.title, 220).replace(/\s+/g, " ");
+      const priceJpy = Number(product?.priceJpy);
+      if (title.length < 2 || !Number.isInteger(priceJpy) || priceJpy < 100 || priceJpy > 1_000_000 || seen.has(url.toString())) return [];
+      const imageUrls = (Array.isArray(product?.imageUrls) ? product.imageUrls : []).flatMap((value) => {
+        try {
+          const imageUrl = new URL(String(value), url);
+          return imageUrl.protocol === "https:" ? [imageUrl.toString()] : [];
+        } catch {
+          return [];
+        }
+      }).filter((value, index, values) => values.indexOf(value) === index).slice(0, 8);
+      const variants = (Array.isArray(product?.variants) ? product.variants : [])
+        .map((value) => cleanText(value, 80)).filter(Boolean).slice(0, 40);
+      const availability = ["available", "sold_out", "reservation"].includes(product?.availability)
+        ? product.availability
+        : "unknown";
+      const brand = cleanText(product?.brand, 40).toLowerCase() === "avail" ? "アベイル" : "しまむら";
+      seen.add(url.toString());
+      return [{
+        url: url.toString(),
+        title,
+        priceJpy,
+        imageUrls,
+        availability,
+        variants,
+        itemCode: cleanText(product?.itemCode, 80) || null,
+        sourceName: `${brand}オンライン（Chrome取得）`,
+      }];
+    } catch {
+      return [];
+    }
+  }).slice(0, 160);
+}
+
+function extensionCorsHeaders(request) {
+  const origin = request.headers.get("origin") || "";
+  const allowedOrigin = origin.startsWith("chrome-extension://") ? origin : "*";
+  return {
+    "access-control-allow-origin": allowedOrigin,
+    "access-control-allow-methods": "POST, OPTIONS",
+    "access-control-allow-headers": "content-type",
+    "access-control-max-age": "86400",
+    vary: "Origin",
+  };
 }
 
 async function importGitHubSnapshot(db) {

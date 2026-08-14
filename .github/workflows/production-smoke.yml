@@ -27,36 +27,30 @@ jobs:
           endpoint="https://shimamura-export-scout-live.y-shoshi49.workers.dev"
           for attempt in {1..36}; do
             health="$(curl --fail --silent --show-error --max-time 15 "$endpoint/api/health" || true)"
-            if [[ "$health" == *'"build":"flyer-tiles-v3"'* ]]; then
+            if [[ "$health" == *'"build":"browser-import-v1"'* ]]; then
               echo "$health"
               exit 0
             fi
             echo "Waiting for deployment ($attempt/36)"
             sleep 10
           done
-          echo "Timed out waiting for build=flyer-tiles-v3"
+          echo "Timed out waiting for build=browser-import-v1"
           exit 1
 
-      - name: Run a real production scan
+      - name: Verify browser import validation
         shell: bash
         run: |
           endpoint="https://shimamura-export-scout-live.y-shoshi49.workers.dev"
-          curl --fail --silent --show-error --max-time 180 \
-            --request POST "$endpoint/api/scan" --output scan-result.json
-          node --input-type=module -e '
-            import fs from "node:fs";
-            const data = JSON.parse(fs.readFileSync("scan-result.json", "utf8"));
-            if (!data.ok || !data.persistence || !data.flyer) process.exit(1);
-            console.log(JSON.stringify({
-              ok: data.ok,
-              persistence: data.persistence,
-              discovered: data.discovered,
-              flyer: { state: data.flyer.state, discovered: data.flyer.discovered, detail: data.flyer.detail },
-              sources: data.sources.map(({ name, state, discovered }) => ({ name, state, discovered })),
-            }));
-          '
+          status="$(curl --silent --show-error --max-time 30 \
+            --output import-result.json --write-out '%{http_code}' \
+            --request POST "$endpoint/api/browser-import" \
+            --header 'content-type: application/json' \
+            --header 'origin: chrome-extension://production-smoke' \
+            --data '{"products":[]}')"
+          test "$status" = "400"
+          grep --quiet 'no valid online products' import-result.json
 
-      - name: Verify D1 persistence
+      - name: Verify D1 and flyer cleanup
         shell: bash
         run: |
           endpoint="https://shimamura-export-scout-live.y-shoshi49.workers.dev"
@@ -66,13 +60,13 @@ jobs:
             import fs from "node:fs";
             const data = JSON.parse(fs.readFileSync("state-result.json", "utf8"));
             const flyerCandidates = (data.candidates || []).filter((row) =>
-              String(row.title_ja || "").includes("チラシAI・要確認")
+              String(row.source_name || "").includes("チラシ") ||
+              String(row.title_ja || "").includes("チラシ")
             );
             console.log(JSON.stringify({
               persistence: data.persistence,
               totalCandidates: data.candidates.length,
               flyerCandidates: flyerCandidates.length,
-              titles: flyerCandidates.slice(0, 10).map((row) => row.title_ja),
             }));
-            if (!data.persistence || flyerCandidates.length < 10) process.exit(1);
+            if (!data.persistence || flyerCandidates.length !== 0) process.exit(1);
           '
