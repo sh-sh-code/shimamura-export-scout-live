@@ -27,14 +27,14 @@ jobs:
           endpoint="https://shimamura-export-scout-live.y-shoshi49.workers.dev"
           for attempt in {1..36}; do
             health="$(curl --fail --silent --show-error --max-time 15 "$endpoint/api/health" || true)"
-            if [[ "$health" == *'"build":"flyer-tiles-v2"'* ]]; then
+            if [[ "$health" == *'"build":"flyer-tiles-v3"'* ]]; then
               echo "$health"
               exit 0
             fi
             echo "Waiting for deployment ($attempt/36)"
             sleep 10
           done
-          echo "Timed out waiting for build=flyer-tiles-v2"
+          echo "Timed out waiting for build=flyer-tiles-v3"
           exit 1
 
       - name: Run a real production scan
