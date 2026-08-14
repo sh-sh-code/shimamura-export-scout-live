@@ -255,6 +255,7 @@ const MAX_SOURCE_BYTES = 1_500_000;
 const MAX_SNAPSHOT_BYTES = 2_000_000;
 const MAX_FLYER_IMAGE_BYTES = 8_000_000;
 const GITHUB_SNAPSHOT_URL = "https://raw.githubusercontent.com/sh-sh-code/shimamura-export-scout/main/data/shimamura-products.json";
+const GITHUB_FLYER_MIRROR_BASE = "https://raw.githubusercontent.com/sh-sh-code/shimamura-export-scout/main/data/flyers";
 const FLYER_INDEX_URL = "https://www.shimamura.gr.jp/shimamura/flier/?g=shimamura";
 const FALLBACK_FLYER_ID = "14467";
 const FLYER_VISION_MODEL = "@cf/google/gemma-4-26b-a4b-it";
@@ -387,7 +388,8 @@ async function scanOfficialFlyer(db, ai) {
     detail = "Workers AI binding unavailable";
   } else {
     try {
-      const imageResponse = await fetch(imageUrl, {
+      let imageInputUrl = imageUrl;
+      let imageResponse = await fetch(imageInputUrl, {
         headers: {
           accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
           referer: FLYER_INDEX_URL,
@@ -396,7 +398,16 @@ async function scanOfficialFlyer(db, ai) {
         redirect: "follow",
         signal: AbortSignal.timeout(20000),
       });
-      if (!imageResponse.ok) throw new Error(`flyer image HTTP ${imageResponse.status}`);
+      if (!imageResponse.ok) {
+        const officialStatus = imageResponse.status;
+        imageInputUrl = `${GITHUB_FLYER_MIRROR_BASE}/${flyerId}.jpg`;
+        imageResponse = await fetch(imageInputUrl, {
+          headers: { accept: "image/jpeg" },
+          redirect: "follow",
+          signal: AbortSignal.timeout(20000),
+        });
+        if (!imageResponse.ok) throw new Error(`flyer image HTTP ${officialStatus}; mirror HTTP ${imageResponse.status}`);
+      }
       const contentType = String(imageResponse.headers.get("content-type") || "").split(";")[0].toLowerCase();
       if (!/^image\/(?:jpeg|png|webp)$/.test(contentType)) throw new Error(`unsupported flyer image type: ${contentType || "unknown"}`);
       const imageBody = await readBytesLimited(imageResponse, MAX_FLYER_IMAGE_BYTES);
@@ -452,7 +463,7 @@ async function scanOfficialFlyer(db, ai) {
       products = parseFlyerVisionAnswer(answer, sourceUrl, imageUrl);
       state = products.length ? "observed" : "ai_empty";
       detail = products.length
-        ? `チラシ${flyerId}をAI読取（${indexState === "observed" ? "最新ID取得" : "確認済みID"}、公開前に要確認）`
+        ? `チラシ${flyerId}をAI読取（${indexState === "observed" ? "最新ID取得" : "確認済みID"}、${imageInputUrl === imageUrl ? "公式画像" : "確認済みミラー"}、公開前に要確認）`
         : "AI returned no high-confidence products";
       await persistProducts(db, products, "しまむら公式チラシ AI読取・要確認");
     } catch (error) {
