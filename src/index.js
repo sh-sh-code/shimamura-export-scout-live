@@ -126,7 +126,7 @@ export default {
     if (url.pathname === "/api/health") {
       return Response.json({
         ok: true,
-        build: "flyer-tiles-v2",
+        build: "flyer-tiles-v3",
         mode: "live-source-scanner",
         automaticPublishing: false,
         shimamuraScanner: "trial",
@@ -472,7 +472,8 @@ async function scanOfficialFlyer(db, ai) {
           },
         },
         temperature: 0,
-        max_completion_tokens: 4000,
+        max_completion_tokens: 6000,
+        chat_template_kwargs: { enable_thinking: false },
         stream: false,
       });
       const answer = response?.choices?.[0]?.message?.content ?? response?.response ?? response?.answer;
@@ -480,7 +481,11 @@ async function scanOfficialFlyer(db, ai) {
       state = products.length ? "observed" : "ai_empty";
       detail = products.length
         ? `チラシ${flyerId}をAI読取（${indexState === "observed" ? "最新ID取得" : "確認済みID"}、${imageMode}、公開前に要確認）`
-        : `AI returned no high-confidence products: ${cleanText(answer, 800)}`;
+        : `AI returned no high-confidence products: ${cleanText(answer, 800) || cleanText(JSON.stringify({
+          finishReason: response?.choices?.[0]?.finish_reason,
+          refusal: response?.choices?.[0]?.message?.refusal,
+          usage: response?.usage,
+        }), 800)}`;
       await persistProducts(db, products, "しまむら公式チラシ AI読取・要確認");
     } catch (error) {
       state = "ai_error";
