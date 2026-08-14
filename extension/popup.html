@@ -5,27 +5,27 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Scout Collector</title>
   <style>
-    *{box-sizing:border-box}body{width:340px;margin:0;padding:18px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#173a2e;background:#f7faf8}h1{font-size:17px;margin:0 0 6px}p{font-size:12px;line-height:1.6;color:#5a6e66;margin:0 0 14px}.card{background:#fff;border:1px solid #dce7e1;border-radius:12px;padding:14px}.row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}label{font-size:12px;font-weight:700}select{border:1px solid #cbd9d2;border-radius:8px;padding:7px;background:#fff}button{width:100%;border:0;border-radius:9px;padding:11px 12px;font-weight:800;cursor:pointer}.primary{background:#13543f;color:#fff}.secondary{margin-top:8px;background:#e8f2ed;color:#174a39}.primary:disabled{opacity:.55;cursor:wait}#status{min-height:38px;margin-top:12px;padding:9px 10px;border-radius:8px;background:#edf4f0;color:#38564b;font-size:11px;line-height:1.55;white-space:pre-wrap}.note{margin-top:10px;font-size:10px;color:#71837c;line-height:1.5}
+    *{box-sizing:border-box}body{width:350px;margin:0;padding:18px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#173a2e;background:#f7faf8}h1{font-size:17px;margin:0 0 6px}p{font-size:12px;line-height:1.6;color:#5a6e66;margin:0 0 14px}.card{background:#fff;border:1px solid #dce7e1;border-radius:12px;padding:14px}.row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}label{font-size:12px;font-weight:700}select{border:1px solid #cbd9d2;border-radius:8px;padding:7px;background:#fff}button{width:100%;border:0;border-radius:9px;padding:11px 12px;font-weight:800;cursor:pointer}.primary{background:#13543f;color:#fff}.secondary{margin-top:8px;background:#e8f2ed;color:#174a39}.primary:disabled{opacity:.55;cursor:wait}#status{min-height:38px;margin-top:12px;padding:9px 10px;border-radius:8px;background:#edf4f0;color:#38564b;font-size:11px;line-height:1.55;white-space:pre-wrap}.note{margin-top:10px;font-size:10px;color:#71837c;line-height:1.5}
   </style>
 </head>
 <body>
   <h1>Scout Collector</h1>
-  <p>開いている商品一覧から、商品名・価格・URL・画像を取得してScoutへ保存します。</p>
+  <p>開いている検索結果を先頭に、商品一覧を自動でページ巡回してScoutへ保存します。</p>
   <div class="card">
     <div class="row">
-      <label for="pages">取得ページ数</label>
+      <label for="pages">巡回する範囲</label>
       <select id="pages">
-        <option value="1">1ページ</option>
-        <option value="2">2ページ</option>
-        <option value="3" selected>3ページ</option>
-        <option value="5">5ページ</option>
+        <option value="0" selected>全ページ（終端まで）</option>
+        <option value="10">10ページ</option>
+        <option value="50">50ページ</option>
+        <option value="100">100ページ</option>
       </select>
     </div>
-    <button class="primary" id="collect">現在の検索結果を取り込む</button>
+    <button class="primary" id="collect">自動巡回スキャンを開始</button>
     <button class="secondary" id="openShop">しまむら新着商品を開く</button>
     <button class="secondary" id="openScout">Scoutを開く</button>
     <div id="status">しまむらオンラインの商品一覧を開いてから実行してください。</div>
-    <div class="note">ログイン情報・Cookieは送信しません。表示中のページ内の商品情報だけを送ります。</div>
+    <div class="note">進捗画面が別タブで開きます。ログイン情報・CookieはScoutへ送信しません。</div>
   </div>
   <script src="popup.js"></script>
 </body>

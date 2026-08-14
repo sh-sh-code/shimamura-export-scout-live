@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Scout 自動巡回</title>
+  <style>
+    :root{--green:#13543f;--line:#dce7e1;--soft:#edf4f0;--muted:#687a73}*{box-sizing:border-box}body{margin:0;background:#f5f8f6;color:#173a2e;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.shell{max-width:760px;margin:56px auto;padding:0 20px}.logo{font-size:12px;font-weight:900;letter-spacing:.16em;color:var(--green)}.card{margin-top:12px;padding:28px;border:1px solid var(--line);border-radius:18px;background:white;box-shadow:0 16px 45px rgba(23,58,46,.08)}h1{margin:0;font-size:27px}p{color:var(--muted);line-height:1.7}.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:22px 0}.metric{padding:14px;border-radius:11px;background:var(--soft)}.metric span{display:block;color:var(--muted);font-size:11px}.metric b{display:block;margin-top:6px;font-size:22px}.bar{height:9px;overflow:hidden;border-radius:20px;background:#e5ece8}.bar i{display:block;width:0;height:100%;border-radius:inherit;background:var(--green);transition:width .25s}.status{min-height:76px;margin-top:14px;padding:13px 15px;border:1px solid var(--line);border-radius:10px;background:#fbfcfb;color:#3f5a50;font:12px/1.65 ui-monospace,monospace;white-space:pre-wrap}.actions{display:flex;gap:9px;margin-top:16px}button,a{min-height:40px;padding:0 16px;border-radius:9px;font-weight:800;font-size:12px;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}button{border:1px solid #d0dcd6;background:white;color:#40564d;cursor:pointer}a{background:var(--green);color:white}.note{margin-top:13px;color:#819088;font-size:11px}@media(max-width:560px){.metrics{grid-template-columns:1fr}.card{padding:20px}}
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <div class="logo">SCOUT · AUTO COLLECTOR</div>
+    <section class="card">
+      <h1 id="title">商品一覧を自動巡回中</h1>
+      <p>しまむらオンラインの一覧を1ページずつ読み、取得した商品をその都度D1へ保存します。</p>
+      <div class="metrics">
+        <div class="metric"><span>処理ページ</span><b id="pageCount">0</b></div>
+        <div class="metric"><span>発見商品</span><b id="foundCount">0</b></div>
+        <div class="metric"><span>D1保存</span><b id="savedCount">0</b></div>
+      </div>
+      <div class="bar"><i id="progress"></i></div>
+      <div class="status" id="status">準備しています…</div>
+      <div class="actions">
+        <button id="stop">停止する</button>
+        <a href="https://shimamura-export-scout-live.y-shoshi49.workers.dev" target="_blank" rel="noreferrer">Scoutを開く</a>
+      </div>
+      <div class="note">このタブは完了まで閉じないでください。商品一覧タブのログイン情報やCookieはScoutへ送信されません。</div>
+    </section>
+  </main>
+  <script src="runner.js"></script>
+</body>
+</html>

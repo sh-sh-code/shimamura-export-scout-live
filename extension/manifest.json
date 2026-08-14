@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "Shimamura Export Scout Collector",
-  "version": "0.1.1",
-  "description": "開いているしまむらオンラインの商品一覧をScoutへ取り込みます。",
-  "permissions": ["activeTab", "scripting"],
+  "version": "0.2.0",
+  "description": "しまむらオンラインの商品一覧を自動巡回してScoutへ取り込みます。",
+  "permissions": ["activeTab", "scripting", "tabs"],
   "host_permissions": [
     "https://www.shop-shimamura.com/*",
     "https://shimamura-export-scout-live.y-shoshi49.workers.dev/*"

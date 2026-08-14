@@ -158,7 +158,7 @@ export default {
     if (url.pathname === "/api/health") {
       return Response.json({
         ok: true,
-        build: "browser-import-v2",
+        build: "browser-import-v3",
         mode: "browser-assisted-online-scanner",
         automaticPublishing: false,
         shimamuraScanner: "chrome-extension",
@@ -274,6 +274,27 @@ async function ensureDatabase(db) {
       observed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`),
   ]);
+  await ensureCandidateColumns(db);
+}
+
+async function ensureCandidateColumns(db) {
+  const result = await db.prepare("PRAGMA table_info(candidates)").all();
+  const existing = new Set((result.results || []).map((column) => String(column.name)));
+  const required = [
+    ["availability", "ALTER TABLE candidates ADD COLUMN availability TEXT NOT NULL DEFAULT 'unknown'"],
+    ["variant_summary", "ALTER TABLE candidates ADD COLUMN variant_summary TEXT NOT NULL DEFAULT '[]'"],
+    ["source_item_code", "ALTER TABLE candidates ADD COLUMN source_item_code TEXT"],
+  ];
+  for (const [name, statement] of required) {
+    if (existing.has(name)) continue;
+    try {
+      await db.prepare(statement).run();
+      existing.add(name);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/duplicate column name/i.test(message)) throw error;
+    }
+  }
 }
 
 const SHIMAMURA_SOURCES = [
