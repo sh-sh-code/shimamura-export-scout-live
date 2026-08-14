@@ -282,7 +282,7 @@ async function importGitHubSnapshot(db) {
         const url = new URL(String(product.url || ""));
         const priceJpy = Number(product.priceJpy);
         const title = cleanText(product.title, 220);
-        if (url.hostname !== "www.shop-shimamura.com" || !title || !Number.isInteger(priceJpy) || priceJpy <= 0 || priceJpy > 1_000_000) return [];
+        if (!["www.shop-shimamura.com", "www.shimamura.gr.jp"].includes(url.hostname) || !title || !Number.isInteger(priceJpy) || priceJpy <= 0 || priceJpy > 1_000_000) return [];
         const imageUrls = (Array.isArray(product.imageUrls) ? product.imageUrls : []).flatMap((value) => {
           try {
             const imageUrl = new URL(String(value));
