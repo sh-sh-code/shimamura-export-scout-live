@@ -55,3 +55,24 @@ jobs:
               sources: data.sources.map(({ name, state, discovered }) => ({ name, state, discovered })),
             }));
           '
+
+      - name: Verify D1 persistence
+        shell: bash
+        run: |
+          endpoint="https://shimamura-export-scout-live.y-shoshi49.workers.dev"
+          curl --fail --silent --show-error --max-time 30 \
+            "$endpoint/api/state" --output state-result.json
+          node --input-type=module -e '
+            import fs from "node:fs";
+            const data = JSON.parse(fs.readFileSync("state-result.json", "utf8"));
+            const flyerCandidates = (data.candidates || []).filter((row) =>
+              String(row.source_name || "").includes("チラシAI")
+            );
+            if (!data.persistence || flyerCandidates.length < 10) process.exit(1);
+            console.log(JSON.stringify({
+              persistence: data.persistence,
+              totalCandidates: data.candidates.length,
+              flyerCandidates: flyerCandidates.length,
+              titles: flyerCandidates.slice(0, 10).map((row) => row.title_ja),
+            }));
+          '
