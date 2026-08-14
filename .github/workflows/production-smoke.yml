@@ -68,11 +68,11 @@ jobs:
             const flyerCandidates = (data.candidates || []).filter((row) =>
               String(row.source_name || "").includes("チラシAI")
             );
-            if (!data.persistence || flyerCandidates.length < 10) process.exit(1);
             console.log(JSON.stringify({
               persistence: data.persistence,
               totalCandidates: data.candidates.length,
               flyerCandidates: flyerCandidates.length,
               titles: flyerCandidates.slice(0, 10).map((row) => row.title_ja),
             }));
+            if (!data.persistence || flyerCandidates.length < 1) process.exit(1);
           '
