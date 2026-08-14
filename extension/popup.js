@@ -28,15 +28,21 @@ collectButton.addEventListener("click", async () => {
     });
     const result = execution?.result;
     if (!result?.products?.length) throw new Error(result?.error || "商品を取得できませんでした。商品一覧ページか確認してください。");
-    setStatus(`${result.products.length}件を取得しました。Scoutへ保存しています…`);
-    const response = await fetch(`${SCOUT_ORIGIN}/api/browser-import`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ pageUrl: tab.url, products: result.products }),
-    });
-    const saved = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(saved.error || `Scout保存エラー HTTP ${response.status}`);
-    setStatus(`${saved.imported}件をD1へ保存しました。\nScoutを開くと商品候補を確認できます。`);
+    let imported = 0;
+    const chunks = [];
+    for (let index = 0; index < result.products.length; index += 25) chunks.push(result.products.slice(index, index + 25));
+    for (let index = 0; index < chunks.length; index += 1) {
+      setStatus(`${result.products.length}件を取得しました。\nScoutへ保存中 ${index + 1}/${chunks.length}…`);
+      const response = await fetch(`${SCOUT_ORIGIN}/api/browser-import`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ pageUrl: tab.url, products: chunks[index] }),
+      });
+      const saved = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(saved.error || `Scout保存エラー HTTP ${response.status}`);
+      imported += Number(saved.imported) || 0;
+    }
+    setStatus(`${imported}件をD1へ保存しました。\nScoutを開くと商品候補を確認できます。`);
   } catch (error) {
     setStatus(`失敗: ${error instanceof Error ? error.message : String(error)}`);
   } finally {

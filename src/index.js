@@ -84,15 +84,21 @@ export default {
       }
       const products = normalizeBrowserProducts(body);
       if (!products.length) return Response.json({ error: "no valid online products" }, { status: 400, headers });
-      await ensureDatabase(env.DB);
-      await persistProducts(env.DB, products, "しまむらオンライン（Chrome取得）");
-      await env.DB.prepare(`INSERT INTO scan_runs (source_url, observation_state, http_status, discovered_count, detail)
-        VALUES (?, 'browser_import', 200, ?, ?)`).bind(
-        "https://www.shop-shimamura.com/",
-        products.length,
-        cleanText(body?.pageUrl, 500) || "Chrome extension import",
-      ).run();
-      return Response.json({ ok: true, imported: products.length, persistence: true }, { headers });
+      try {
+        await ensureDatabase(env.DB);
+        await persistProducts(env.DB, products, "しまむらオンライン（Chrome取得）");
+        await env.DB.prepare(`INSERT INTO scan_runs (source_url, observation_state, http_status, discovered_count, detail)
+          VALUES (?, 'browser_import', 200, ?, ?)`).bind(
+          "https://www.shop-shimamura.com/",
+          products.length,
+          cleanText(body?.pageUrl, 500) || "Chrome extension import",
+        ).run();
+        return Response.json({ ok: true, imported: products.length, persistence: true }, { headers });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(JSON.stringify({ event: "browser_import_failed", count: products.length, error: message.slice(0, 500) }));
+        return Response.json({ error: `D1保存失敗: ${message.slice(0, 300)}` }, { status: 500, headers });
+      }
     }
     if (url.pathname === "/api/state") {
       if (request.method !== "GET") return Response.json({ error: "method not allowed" }, { status: 405 });
@@ -152,7 +158,7 @@ export default {
     if (url.pathname === "/api/health") {
       return Response.json({
         ok: true,
-        build: "browser-import-v1",
+        build: "browser-import-v2",
         mode: "browser-assisted-online-scanner",
         automaticPublishing: false,
         shimamuraScanner: "chrome-extension",
