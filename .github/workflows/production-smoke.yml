@@ -66,7 +66,7 @@ jobs:
             import fs from "node:fs";
             const data = JSON.parse(fs.readFileSync("state-result.json", "utf8"));
             const flyerCandidates = (data.candidates || []).filter((row) =>
-              String(row.source_name || "").includes("チラシAI")
+              String(row.title_ja || "").includes("チラシAI・要確認")
             );
             console.log(JSON.stringify({
               persistence: data.persistence,
@@ -74,5 +74,5 @@ jobs:
               flyerCandidates: flyerCandidates.length,
               titles: flyerCandidates.slice(0, 10).map((row) => row.title_ja),
             }));
-            if (!data.persistence || flyerCandidates.length < 1) process.exit(1);
+            if (!data.persistence || flyerCandidates.length < 10) process.exit(1);
           '
