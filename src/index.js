@@ -257,7 +257,7 @@ const MAX_FLYER_IMAGE_BYTES = 8_000_000;
 const GITHUB_SNAPSHOT_URL = "https://raw.githubusercontent.com/sh-sh-code/shimamura-export-scout/main/data/shimamura-products.json";
 const FLYER_INDEX_URL = "https://www.shimamura.gr.jp/shimamura/flier/?g=shimamura";
 const FALLBACK_FLYER_ID = "14467";
-const FLYER_VISION_MODEL = "@cf/moondream/moondream3.1-9B-A2B";
+const FLYER_VISION_MODEL = "@cf/google/gemma-4-26b-a4b-it";
 
 async function persistProducts(db, products, sourceName) {
   if (!db || !products.length) return;
@@ -402,22 +402,54 @@ async function scanOfficialFlyer(db, ai) {
       const imageBody = await readBytesLimited(imageResponse, MAX_FLYER_IMAGE_BYTES);
       if (imageBody.exceeded) throw new Error("flyer image exceeded size limit");
       const imageDataUrl = `data:${contentType};base64,${bytesToBase64(imageBody.bytes)}`;
+      const extractionPrompt = [
+        "この日本語の小売チラシから、商品名と税込価格が両方とも明瞭に読める商品だけを抽出してください。",
+        "数字や商品名が少しでも不鮮明なら除外し、推測・補完・一般知識の追加はしないでください。",
+        "割引率、ポイント、景品、店舗情報、カード案内、送料、税注記は商品として抽出しないでください。",
+        "最大20件。confidenceは画像上で商品名と価格を正確に読めた確信度です。",
+      ].join("\n");
       const response = await ai.run(FLYER_VISION_MODEL, {
-        task: "query",
-        image: imageDataUrl,
-        question: [
-          "この日本語の小売チラシから、商品名と税込価格が両方とも明瞭に読める商品だけを抽出してください。",
-          "数字や商品名が少しでも不鮮明なら除外し、推測・補完・一般知識の追加はしないでください。",
-          "割引率、ポイント、景品、店舗情報、カード案内、送料、税注記は商品として抽出しないでください。",
-          "最大20件。JSON以外は出力しないでください。",
-          "形式: {\"items\":[{\"title\":\"画像に見える正確な商品名\",\"priceJpy\":税込価格の整数,\"confidence\":0から1}]} ",
-        ].join("\n"),
-        reasoning: false,
+        messages: [{
+          role: "user",
+          content: [
+            { type: "text", text: extractionPrompt },
+            { type: "image_url", image_url: { url: imageDataUrl, detail: "high" } },
+          ],
+        }],
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "shimamura_flyer_items",
+            strict: true,
+            schema: {
+              type: "object",
+              additionalProperties: false,
+              required: ["items"],
+              properties: {
+                items: {
+                  type: "array",
+                  maxItems: 20,
+                  items: {
+                    type: "object",
+                    additionalProperties: false,
+                    required: ["title", "priceJpy", "confidence"],
+                    properties: {
+                      title: { type: "string" },
+                      priceJpy: { type: "integer" },
+                      confidence: { type: "number", minimum: 0, maximum: 1 },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
         temperature: 0,
-        max_tokens: 5000,
+        max_completion_tokens: 4000,
         stream: false,
       });
-      products = parseFlyerVisionAnswer(response?.answer, sourceUrl, imageUrl);
+      const answer = response?.choices?.[0]?.message?.content ?? response?.response ?? response?.answer;
+      products = parseFlyerVisionAnswer(answer, sourceUrl, imageUrl);
       state = products.length ? "observed" : "ai_empty";
       detail = products.length
         ? `チラシ${flyerId}をAI読取（${indexState === "observed" ? "最新ID取得" : "確認済みID"}、公開前に要確認）`
