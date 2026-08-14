@@ -126,7 +126,7 @@ export default {
     if (url.pathname === "/api/health") {
       return Response.json({
         ok: true,
-        build: "flyer-mirror-v1",
+        build: "flyer-tiles-v2",
         mode: "live-source-scanner",
         automaticPublishing: false,
         shimamuraScanner: "trial",
@@ -370,7 +370,7 @@ async function scanOfficialFlyer(db, ai) {
   const imageUrl = `https://www.shimamura.gr.jp/images/flier/${flyerId}surface_org.jpg`;
   if (db) {
     const previous = await db.prepare(`SELECT observation_state, discovered_count FROM scan_runs
-      WHERE source_url = ? AND observation_state IN ('observed', 'ai_empty')
+      WHERE source_url = ? AND observation_state = 'observed'
       ORDER BY id DESC LIMIT 1`).bind(sourceUrl).first();
     if (previous) {
       return {
@@ -389,8 +389,7 @@ async function scanOfficialFlyer(db, ai) {
     detail = "Workers AI binding unavailable";
   } else {
     try {
-      let imageInputUrl = imageUrl;
-      let imageResponse = await fetch(imageInputUrl, {
+      const officialResponse = await fetch(imageUrl, {
         headers: {
           accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
           referer: FLYER_INDEX_URL,
@@ -399,23 +398,39 @@ async function scanOfficialFlyer(db, ai) {
         redirect: "follow",
         signal: AbortSignal.timeout(20000),
       });
-      if (!imageResponse.ok) {
-        const officialStatus = imageResponse.status;
-        imageInputUrl = `${GITHUB_FLYER_MIRROR_BASE}/${flyerId}.jpg`;
-        imageResponse = await fetch(imageInputUrl, {
+      let imageMode = "公式画像";
+      let imageResponses = [officialResponse];
+      if (!officialResponse.ok) {
+        const tileUrls = ["01", "02", "03", "04"].map((part) => `${GITHUB_FLYER_MIRROR_BASE}/${flyerId}/${part}.jpg`);
+        imageResponses = await Promise.all(tileUrls.map((tileUrl) => fetch(tileUrl, {
           headers: { accept: "image/jpeg" },
           redirect: "follow",
           signal: AbortSignal.timeout(20000),
-        });
-        if (!imageResponse.ok) throw new Error(`flyer image HTTP ${officialStatus}; mirror HTTP ${imageResponse.status}`);
+        })));
+        if (imageResponses.some((response) => !response.ok)) {
+          const mirrorUrl = `${GITHUB_FLYER_MIRROR_BASE}/${flyerId}.jpg`;
+          const mirrorResponse = await fetch(mirrorUrl, {
+            headers: { accept: "image/jpeg" },
+            redirect: "follow",
+            signal: AbortSignal.timeout(20000),
+          });
+          if (!mirrorResponse.ok) throw new Error(`flyer image HTTP ${officialResponse.status}; mirror HTTP ${mirrorResponse.status}`);
+          imageResponses = [mirrorResponse];
+          imageMode = "確認済みミラー";
+        } else {
+          imageMode = "確認済み4分割ミラー";
+        }
       }
-      const contentType = String(imageResponse.headers.get("content-type") || "").split(";")[0].toLowerCase();
-      if (!/^image\/(?:jpeg|png|webp)$/.test(contentType)) throw new Error(`unsupported flyer image type: ${contentType || "unknown"}`);
-      const imageBody = await readBytesLimited(imageResponse, MAX_FLYER_IMAGE_BYTES);
-      if (imageBody.exceeded) throw new Error("flyer image exceeded size limit");
-      const imageDataUrl = `data:${contentType};base64,${bytesToBase64(imageBody.bytes)}`;
+      const imageDataUrls = [];
+      for (const imageResponse of imageResponses) {
+        const contentType = String(imageResponse.headers.get("content-type") || "").split(";")[0].toLowerCase();
+        if (!/^image\/(?:jpeg|png|webp)$/.test(contentType)) throw new Error(`unsupported flyer image type: ${contentType || "unknown"}`);
+        const imageBody = await readBytesLimited(imageResponse, MAX_FLYER_IMAGE_BYTES);
+        if (imageBody.exceeded) throw new Error("flyer image exceeded size limit");
+        imageDataUrls.push(`data:${contentType};base64,${bytesToBase64(imageBody.bytes)}`);
+      }
       const extractionPrompt = [
-        "この日本語の小売チラシから、商品名と税込価格が両方とも明瞭に読める商品だけを抽出してください。",
+        "画像は同じ日本語小売チラシの全体、または重なりのある4分割です。商品名と税込価格が両方とも明瞭に読める商品だけを抽出してください。",
         "数字や商品名が少しでも不鮮明なら除外し、推測・補完・一般知識の追加はしないでください。",
         "割引率、ポイント、景品、店舗情報、カード案内、送料、税注記は商品として抽出しないでください。",
         "最大20件。confidenceは画像上で商品名と価格を正確に読めた確信度です。",
@@ -425,7 +440,7 @@ async function scanOfficialFlyer(db, ai) {
           role: "user",
           content: [
             { type: "text", text: extractionPrompt },
-            { type: "image_url", image_url: { url: imageDataUrl, detail: "high" } },
+            ...imageDataUrls.map((url) => ({ type: "image_url", image_url: { url, detail: "high" } })),
           ],
         }],
         response_format: {
@@ -464,8 +479,8 @@ async function scanOfficialFlyer(db, ai) {
       products = parseFlyerVisionAnswer(answer, sourceUrl, imageUrl);
       state = products.length ? "observed" : "ai_empty";
       detail = products.length
-        ? `チラシ${flyerId}をAI読取（${indexState === "observed" ? "最新ID取得" : "確認済みID"}、${imageInputUrl === imageUrl ? "公式画像" : "確認済みミラー"}、公開前に要確認）`
-        : "AI returned no high-confidence products";
+        ? `チラシ${flyerId}をAI読取（${indexState === "observed" ? "最新ID取得" : "確認済みID"}、${imageMode}、公開前に要確認）`
+        : `AI returned no high-confidence products: ${cleanText(answer, 800)}`;
       await persistProducts(db, products, "しまむら公式チラシ AI読取・要確認");
     } catch (error) {
       state = "ai_error";
