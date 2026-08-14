@@ -42,7 +42,7 @@ const liveYen=function(value){return new Intl.NumberFormat("ja-JP",{style:"curre
 const liveEsc=function(value){const entities={38:"&amp;",60:"&lt;",62:"&gt;",34:"&quot;",39:"&#39;"};return String(value==null?"":value).replace(/[&<>"']/g,function(char){return entities[char.charCodeAt(0)]})};
 function mapCandidate(row,index){let images=[];try{images=JSON.parse(row.source_image_urls||"[]")}catch(error){images=[]}const sold=Number(row.sold_count)||0;const median=Number(row.median_sold_usd)||0;const appraised=sold>0&&median>0;return{id:Number(row.id),rank:appraised?String(row.rank||"C"):"C",status:appraised?"査定済み":"未査定",brand:row.source_name||"しまむら",title:row.title_ja||"商品名未取得",en:appraised?(row.comparable_query||""):"eBay相場 未観測",cost:Number(row.source_price_jpy)||0,usd:median,sold:sold,profit:Number(row.estimated_profit_jpy)||0,roi:Number(row.roi_percent)||0,confidence:Number(row.confidence)||0,color:["coral","violet","sky","sand"][index%4],glyph:String(row.title_ja||"品").slice(0,1),source:row.source_url,images:images,capturedAt:row.source_captured_at,appraised:appraised}}
 function ensureScanStatus(){let node=document.querySelector("#scanStatus");if(node)return node;node=document.createElement("div");node.id="scanStatus";node.style.cssText="margin:13px 22px 0;padding:12px 14px;border:1px solid #dfe6e2;border-radius:9px;background:#fff;color:#5f6c66;font-size:10px;line-height:1.6";document.querySelector("#candidatesPage .grid").before(node);return node}
-function renderScanStatus(rows,message){const node=ensureScanStatus();if(message){node.innerHTML="<b>"+liveEsc(message)+"</b>";return}if(!rows||!rows.length){node.innerHTML="<b>まだ本番スキャンを実行していません。</b> 「今すぐスキャン」を押すと4つの監視URLを確認し、成功・ブロック・解析不能を区別して保存します。";return}const labels={observed:"取得成功",blocked:"アクセス制限",http_error:"HTTPエラー",invalid_response:"想定外の応答",parse_unobserved:"ページ取得・商品解析不能",request_error:"通信失敗",unobserved:"未観測"};const last=rows[0].observed_at?new Date(String(rows[0].observed_at).replace(" ","T")+"Z"):null;document.querySelector("#lastUpdated").textContent=last&&!Number.isNaN(last.getTime())?"最終更新 "+last.toLocaleString("ja-JP",{timeZone:"Asia/Tokyo",month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"}):"最終更新 記録あり";node.innerHTML="<b>直近スキャン</b>　"+rows.slice(0,4).map(function(row){return liveEsc(labels[row.observation_state]||row.observation_state)+" "+Number(row.discovered_count||0)+"件"}).join(" ／ ")}
+function renderScanStatus(rows,message){const node=ensureScanStatus();if(message){node.innerHTML="<b>"+liveEsc(message)+"</b>";return}if(!rows||!rows.length){node.innerHTML="<b>まだ本番スキャンを実行していません。</b> 「今すぐスキャン」で公式チラシAI読取と4つの商品監視URLを確認します。";return}const labels={observed:"取得成功",cached:"解析済み",ai_empty:"AI読取0件",ai_error:"AI読取失敗",ai_unavailable:"AI未接続",blocked:"アクセス制限",http_error:"HTTPエラー",invalid_response:"想定外の応答",parse_unobserved:"ページ取得・商品解析不能",request_error:"通信失敗",unobserved:"未観測"};const last=rows[0].observed_at?new Date(String(rows[0].observed_at).replace(" ","T")+"Z"):null;document.querySelector("#lastUpdated").textContent=last&&!Number.isNaN(last.getTime())?"最終更新 "+last.toLocaleString("ja-JP",{timeZone:"Asia/Tokyo",month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"}):"最終更新 記録あり";node.innerHTML="<b>直近スキャン</b>　"+rows.slice(0,5).map(function(row){return liveEsc(labels[row.observation_state]||row.observation_state)+" "+Number(row.discovered_count||0)+"件"}).join(" ／ ")}
 function updateSummary(){const appraised=liveItems.filter(function(item){return item.appraised});const profit=appraised.reduce(function(sum,item){return sum+item.profit},0);const avg=appraised.length?Math.round(appraised.reduce(function(sum,item){return sum+item.roi},0)/appraised.length):null;const strong=document.querySelectorAll(".stats .stat strong");strong[0].textContent=String(liveItems.length);strong[1].textContent=appraised.length?liveYen(profit):"—";strong[2].textContent=avg==null?"—":avg+"%";strong[3].textContent=String(liveItems.length-appraised.length);document.querySelector("#navCandidateCount").textContent=String(liveItems.length);document.querySelector("#navDraftCount").textContent=String(liveDrafts.length)}
 function renderLiveRows(){const q=document.querySelector("#search").value.toLowerCase();const visible=liveItems.filter(function(item){const text=(item.title+" "+item.en+" "+item.brand).toLowerCase();return text.includes(q)&&(liveFilter==="すべて"||liveFilter==="A"&&item.rank==="A"||item.status===liveFilter)});if(!visible.length){document.querySelector("#rows").innerHTML='<div style="padding:34px 18px;text-align:center;color:#77827d;font-size:10px"><b style="display:block;color:#33423c;margin-bottom:7px">実取得の商品候補はまだありません</b>スキャン結果が0件でも、取得失敗を在庫0とは扱いません。</div>'}else{document.querySelector("#rows").innerHTML=visible.map(function(item){const market=item.appraised?"$"+item.usd.toFixed(2):"—";const profit=item.appraised?"+"+liveYen(item.profit):"未査定";return '<button class="row '+(item.id===liveActive?'active':'')+'" data-live-id="'+item.id+'"><div class="thumb '+item.color+'"><span class="rank">'+liveEsc(item.rank)+'</span><span class="glyph">'+liveEsc(item.glyph)+'</span></div><div class="copy"><div class="badges"><span>'+liveEsc(item.brand)+'</span><i class="'+(item.appraised?'good':'check')+'">'+liveEsc(item.status)+'</i></div><b>'+liveEsc(item.title)+'</b><small>'+liveEsc(item.en)+'</small></div><div class="money"><b>'+liveYen(item.cost)+'</b><small>取得価格</small></div><div class="money"><b>'+market+'</b><small>'+(item.appraised?item.sold+"件 sold":"未観測")+'</small></div><div class="profit"><b>'+profit+'</b><small>'+(item.appraised?"ROI "+item.roi+"%":"eBay未接続")+'</small></div></button>'}).join("")}document.querySelector("#count").textContent=visible.length+" / "+liveItems.length+"件を表示";document.querySelectorAll("[data-live-id]").forEach(function(node){node.onclick=function(){liveActive=Number(node.dataset.liveId);renderLiveRows();renderLiveDetail()}})}
 function renderLiveDetail(){const item=liveItems.find(function(row){return row.id===liveActive});if(!item){document.querySelector("#detail").innerHTML='<div style="padding:34px 22px;color:#6f7b76;font-size:10px;line-height:1.7"><b style="display:block;color:#26362f;font-size:14px;margin-bottom:8px">候補がまだありません</b>まずスキャンを実行してください。取得できなかった場合は、上の直近スキャン欄に理由を表示します。</div>';return}const photos=item.images.length?item.images.slice(0,4).map(function(url,index){return '<div class="photo"><img src="'+liveEsc(url)+'" alt="商品画像 '+(index+1)+'" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover"></div>'}).join(""):'<div class="photo '+item.color+'"><b>画像未取得</b></div>';const market=item.appraised?"$"+item.usd.toFixed(2):"未観測";const profit=item.appraised?"利益 +"+liveYen(item.profit):"利益は未計算";const draftTitle="Japan exclusive "+item.title;const draftDescription=["Authentic item sourced from a Japanese retailer.","","Item: "+item.title,"Source: Japan","","Please verify stock, measurements, image usage, and condition before publishing."].join("\\n");document.querySelector("#detail").innerHTML='<div class="detailScroll"><div class="detailTop"><div><span class="rankTag">'+(item.appraised?"RANK "+liveEsc(item.rank):"未査定")+'</span><small>'+(item.appraised?"一致精度 "+item.confidence+"%":"eBay売却相場 未観測")+'</small></div></div><h2>'+liveEsc(item.title)+'</h2><a class="sourceLink" href="'+liveEsc(item.source)+'" target="_blank" rel="noreferrer">元の商品ページ ↗</a><div class="photos">'+photos+'</div><div class="sourceMeta"><span>取得画像 '+item.images.length+'枚</span><small>'+liveEsc(item.capturedAt||"")+'</small></div><section class="card"><div class="cardHead"><div><span>自動査定</span><small>未観測値を0として扱いません</small></div><b>'+profit+'</b></div><div class="rail"><div><span>仕入れ</span><b>'+liveYen(item.cost)+'</b></div><i>→</i><div><span>販売相場</span><b>'+market+'</b></div><i>→</i><div class="positive"><span>ROI</span><b>'+(item.appraised?item.roi+"%":"—")+'</b></div></div><div class="evidence"><span>sold '+(item.appraised?item.sold+"件":"未観測")+'</span><span>eBay Product Research '+(item.appraised?"取得済み":"未接続")+'</span></div></section><section class="card draft"><div class="cardHead"><div><span>出品下書き</span><small>公開処理はありません</small></div><button class="ready">自動生成</button></div><label>英語タイトル <span id="chars">'+draftTitle.length+'/80</span><input maxlength="80" id="draftTitle" value="'+liveEsc(draftTitle)+'"></label><div class="draftGrid"><label>販売価格 (USD)<input id="draftPrice" value="'+(item.appraised?item.usd.toFixed(2):"")+'" placeholder="相場接続後に自動入力"></label><label>数量<input value="1" readonly></label></div><label>商品説明<textarea id="draftDescription" rows="7">'+liveEsc(draftDescription)+'</textarea></label><label class="checkLabel"><input type="checkbox" id="confirm"><span>商品・在庫・画像利用条件を自分で確認しました</span></label></section></div><div class="detailActions"><button class="secondary" id="saveDraft">下書きを保存</button><button class="approve" id="approve" disabled>出品を承認 <span>↗</span></button><small>eBay未接続のため、外部公開は実行されません</small></div>';const confirm=document.querySelector("#confirm");const approve=document.querySelector("#approve");const title=document.querySelector("#draftTitle");confirm.onchange=function(){approve.disabled=!confirm.checked};title.oninput=function(){document.querySelector("#chars").textContent=title.value.length+"/80"};document.querySelector("#saveDraft").onclick=async function(){if(!livePersistence){liveToast("D1接続後に下書きを保存できます");return}const price=Number(document.querySelector("#draftPrice").value);if(!price){liveToast("販売価格を入力してください");return}const response=await fetch("/api/drafts",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({candidateId:item.id,titleEn:title.value,descriptionEn:document.querySelector("#draftDescription").value,listingPriceUsd:price,sourceAcknowledged:confirm.checked})});liveToast(response.ok?"下書きをDBへ保存しました":"下書きの保存に失敗しました");if(response.ok)await loadLiveState()};approve.onclick=function(){document.querySelector("#modalTitle").textContent=title.value;document.querySelector("#modalPrice").textContent="$"+document.querySelector("#draftPrice").value;document.querySelector("#modal").classList.add("open")}}
@@ -54,7 +54,7 @@ function liveToast(message){const node=document.querySelector("#note");node.hidd
 document.querySelectorAll(".nav button").forEach(function(button){button.onclick=function(){document.querySelectorAll(".nav button").forEach(function(other){other.classList.toggle("active",other===button)});const tab=button.dataset.tab;document.querySelector("#candidatesPage").style.display=tab==="candidates"?"block":"none";document.querySelector("#draftsPage").classList.toggle("active",tab==="drafts");document.querySelector("#settingsPage").classList.toggle("active",tab==="settings");const labels={candidates:["DISCOVERY QUEUE","販売候補"],drafts:["READY FOR REVIEW","出品下書き"],settings:["PROFIT MODEL","査定設定"]};document.querySelector("#eyebrow").textContent=labels[tab][0];document.querySelector("#pageTitle").textContent=labels[tab][1]}});
 document.querySelectorAll(".filters button").forEach(function(button){button.onclick=function(){liveFilter=button.dataset.filter;document.querySelectorAll(".filters button").forEach(function(other){other.classList.toggle("active",other===button)});renderLiveRows()}});
 document.querySelector("#search").oninput=renderLiveRows;
-document.querySelector("#scan").onclick=async function(event){const button=event.currentTarget;button.disabled=true;button.innerHTML="<span>✦</span> スキャン中…";renderScanStatus([],"4つの監視URLを確認しています。最大15秒ほどかかります。");try{const response=await fetch("/api/scan",{method:"POST"});const result=await response.json();if(!response.ok)throw new Error(result.error||"scan failed");await loadLiveState();if(!liveItems.length&&!result.persistence){liveItems=temporaryRowsFromScan(result).map(mapCandidate);liveActive=liveItems[0]?liveItems[0].id:null;updateSummary();renderLiveRows();renderLiveDetail()}const observed=result.sources.filter(function(row){return row.state==="observed"}).length;const storage=result.persistence?"DB保存済み":"一時表示（D1未接続）";const summary=result.discovered+"件発見／取得成功 "+observed+"URL／未観測 "+(result.sources.length-observed)+"URL／"+storage;renderScanStatus([],summary);liveToast(summary)}catch(error){renderScanStatus([],"スキャンに失敗しました。既存データは消していません。");liveToast("スキャンに失敗しました")}finally{button.disabled=false;button.innerHTML="<span>✦</span> 今すぐスキャン"}};
+document.querySelector("#scan").onclick=async function(event){const button=event.currentTarget;button.disabled=true;button.innerHTML="<span>✦</span> スキャン中…";renderScanStatus([],"公式チラシAI読取と4つの監視URLを確認しています。最大45秒ほどかかります。");try{const response=await fetch("/api/scan",{method:"POST"});const result=await response.json();if(!response.ok)throw new Error(result.error||"scan failed");await loadLiveState();if(!liveItems.length&&!result.persistence){liveItems=temporaryRowsFromScan(result).map(mapCandidate);liveActive=liveItems[0]?liveItems[0].id:null;updateSummary();renderLiveRows();renderLiveDetail()}const observed=result.sources.filter(function(row){return row.state==="observed"}).length;const storage=result.persistence?"DB保存済み":"一時表示（D1未接続）";const summary=result.discovered+"件発見／取得成功 "+observed+"経路／未観測 "+(result.sources.length-observed)+"経路／"+storage;renderScanStatus([],summary);liveToast(summary)}catch(error){renderScanStatus([],"スキャンに失敗しました。既存データは消していません。");liveToast("スキャンに失敗しました")}finally{button.disabled=false;button.innerHTML="<span>✦</span> 今すぐスキャン"}};
 document.querySelector("#saveSettings").onclick=async function(){const ids=["fx","fee","intlShipping","domesticShipping","ddp","returnReserve","minProfit","minRoi","minSold"];const values=ids.map(function(id){return Number(document.querySelector("#"+id).value)});const response=await fetch("/api/settings",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({fxJpyPerUsd:values[0],marketplaceFeePercent:values[1],internationalShippingJpy:values[2],domesticShippingJpy:values[3],ddpReserveJpy:values[4],returnReservePercent:values[5],minimumProfitJpy:values[6],minimumRoiPercent:values[7],minimumSoldCount:values[8]})});liveToast(response.ok?"査定条件を保存しました":"設定の保存に失敗しました")};
 document.querySelector("#back").onclick=function(){document.querySelector("#modal").classList.remove("open")};document.querySelector("#connect").onclick=function(){document.querySelector("#modal").classList.remove("open");document.querySelector('[data-tab="settings"]').click()};document.querySelector("#modal").onclick=function(event){if(event.target.id==="modal")event.currentTarget.classList.remove("open")};
 loadLiveState().catch(function(){renderScanStatus([],"DBの読み込みに失敗しました。再読み込みしてください。");renderLiveRows();renderLiveDetail()});
@@ -108,9 +108,13 @@ export default {
       const database = env?.DB ?? null;
       if (database) await ensureDatabase(database);
       const snapshot = await importGitHubSnapshot(database);
-      const scanResults = await Promise.all(SHIMAMURA_SOURCES.map((source) => scanShimamuraSource(database, source)));
+      const [flyer, directResults] = await Promise.all([
+        scanOfficialFlyer(database, env?.AI),
+        Promise.all(SHIMAMURA_SOURCES.map((source) => scanShimamuraSource(database, source))),
+      ]);
+      const scanResults = [flyer, ...directResults];
       const discovered = snapshot.imported + scanResults.reduce((sum, result) => sum + result.discovered, 0);
-      return Response.json({ ok: true, discovered, snapshot, sources: scanResults, persistence: Boolean(database) });
+      return Response.json({ ok: true, discovered, snapshot, flyer, sources: scanResults, persistence: Boolean(database) });
     }
     if (url.pathname === "/api/approve" && request.method === "POST") {
       return Response.json({
@@ -125,6 +129,7 @@ export default {
         mode: "live-source-scanner",
         automaticPublishing: false,
         shimamuraScanner: "trial",
+        flyerVision: Boolean(env?.AI),
         ebayConnector: false,
         persistence: Boolean(env?.DB),
       });
@@ -147,12 +152,17 @@ export default {
     }
     await ensureDatabase(env.DB);
     const snapshot = await importGitHubSnapshot(env.DB);
-    const scanResults = await Promise.all(SHIMAMURA_SOURCES.map((source) => scanShimamuraSource(env.DB, source)));
+    const [flyer, directResults] = await Promise.all([
+      scanOfficialFlyer(env.DB, env?.AI),
+      Promise.all(SHIMAMURA_SOURCES.map((source) => scanShimamuraSource(env.DB, source))),
+    ]);
+    const scanResults = [flyer, ...directResults];
     console.log(JSON.stringify({
       event: "scheduled_scan",
       cron: controller.cron,
       discovered: snapshot.imported + scanResults.reduce((sum, result) => sum + result.discovered, 0),
       snapshot: { state: snapshot.state, imported: snapshot.imported, observedAt: snapshot.observedAt },
+      flyer: { state: flyer.state, discovered: flyer.discovered },
       states: scanResults.map((result) => ({ name: result.name, state: result.state, discovered: result.discovered })),
     }));
   },
@@ -244,6 +254,9 @@ const SHIMAMURA_SOURCES = [
 const MAX_SOURCE_BYTES = 1_500_000;
 const MAX_SNAPSHOT_BYTES = 2_000_000;
 const GITHUB_SNAPSHOT_URL = "https://raw.githubusercontent.com/sh-sh-code/shimamura-export-scout/main/data/shimamura-products.json";
+const FLYER_INDEX_URL = "https://www.shimamura.gr.jp/shimamura/flier/?g=shimamura";
+const FALLBACK_FLYER_ID = "14467";
+const FLYER_VISION_MODEL = "@cf/moondream/moondream3.1-9B-A2B";
 
 async function persistProducts(db, products, sourceName) {
   if (!db || !products.length) return;
@@ -314,6 +327,137 @@ async function importGitHubSnapshot(db) {
       VALUES (?, ?, ?, ?, ?)`).bind(GITHUB_SNAPSHOT_URL, state, null, products.length, detail).run();
   }
   return { state, imported: products.length, observedAt, detail, products: products.slice(0, 40) };
+}
+
+async function scanOfficialFlyer(db, ai) {
+  let flyerId = FALLBACK_FLYER_ID;
+  let indexState = "fallback";
+  let httpStatus = null;
+  let detail = null;
+  let products = [];
+
+  try {
+    const response = await fetch(FLYER_INDEX_URL, {
+      headers: {
+        accept: "text/html,application/xhtml+xml",
+        "accept-language": "ja-JP,ja;q=0.9",
+        "user-agent": "Mozilla/5.0 (compatible; ExportScout/0.1; low-frequency flyer monitor)",
+      },
+      redirect: "follow",
+      signal: AbortSignal.timeout(12000),
+    });
+    httpStatus = response.status;
+    if (response.ok) {
+      const sourceBody = await readTextLimited(response, MAX_SOURCE_BYTES);
+      const match = sourceBody.text.match(/(?:flier\/detail\/face\/|images\/flier\/)(\d{3,})(?:\/|surface)/i);
+      if (!sourceBody.exceeded && match) {
+        flyerId = match[1];
+        indexState = "observed";
+      } else {
+        detail = sourceBody.exceeded ? "flyer index exceeded size limit" : "current flyer id was not found; using verified fallback";
+      }
+    } else {
+      detail = `flyer index HTTP ${response.status}; using verified fallback`;
+    }
+  } catch (error) {
+    detail = `${error instanceof Error ? error.message : "flyer index request failed"}; using verified fallback`;
+  }
+
+  const sourceUrl = `https://www.shimamura.gr.jp/shimamura/flier/detail/face/${flyerId}/`;
+  const imageUrl = `https://www.shimamura.gr.jp/images/flier/${flyerId}surface_org.jpg`;
+  if (db) {
+    const previous = await db.prepare(`SELECT observation_state, discovered_count FROM scan_runs
+      WHERE source_url = ? AND observation_state IN ('observed', 'ai_empty')
+      ORDER BY id DESC LIMIT 1`).bind(sourceUrl).first();
+    if (previous) {
+      return {
+        name: "しまむら公式チラシ AI読取",
+        state: "cached",
+        httpStatus,
+        discovered: 0,
+        detail: `チラシ${flyerId}は解析済み`,
+        products: [],
+      };
+    }
+  }
+
+  let state = "ai_unavailable";
+  if (!ai) {
+    detail = "Workers AI binding unavailable";
+  } else {
+    try {
+      const response = await ai.run(FLYER_VISION_MODEL, {
+        task: "query",
+        image: imageUrl,
+        question: [
+          "この日本語の小売チラシから、商品名と税込価格が両方とも明瞭に読める商品だけを抽出してください。",
+          "数字や商品名が少しでも不鮮明なら除外し、推測・補完・一般知識の追加はしないでください。",
+          "割引率、ポイント、景品、店舗情報、カード案内、送料、税注記は商品として抽出しないでください。",
+          "最大20件。JSON以外は出力しないでください。",
+          "形式: {\"items\":[{\"title\":\"画像に見える正確な商品名\",\"priceJpy\":税込価格の整数,\"confidence\":0から1}]} ",
+        ].join("\n"),
+        reasoning: false,
+        temperature: 0,
+        max_tokens: 5000,
+        stream: false,
+      });
+      products = parseFlyerVisionAnswer(response?.answer, sourceUrl, imageUrl);
+      state = products.length ? "observed" : "ai_empty";
+      detail = products.length
+        ? `チラシ${flyerId}をAI読取（${indexState === "observed" ? "最新ID取得" : "確認済みID"}、公開前に要確認）`
+        : "AI returned no high-confidence products";
+      await persistProducts(db, products, "しまむら公式チラシ AI読取・要確認");
+    } catch (error) {
+      state = "ai_error";
+      detail = error instanceof Error ? error.message.slice(0, 240) : "unknown Workers AI error";
+    }
+  }
+
+  if (db) {
+    await db.prepare(`INSERT INTO scan_runs (source_url, observation_state, http_status, discovered_count, detail)
+      VALUES (?, ?, ?, ?, ?)`).bind(sourceUrl, state, httpStatus, products.length, detail).run();
+  }
+  return {
+    name: "しまむら公式チラシ AI読取",
+    state,
+    httpStatus,
+    discovered: products.length,
+    detail,
+    products: products.slice(0, 40),
+  };
+}
+
+function parseFlyerVisionAnswer(answer, sourceUrl, imageUrl) {
+  const raw = cleanText(answer, 60000);
+  if (!raw) return [];
+  const firstBrace = raw.indexOf("{");
+  const lastBrace = raw.lastIndexOf("}");
+  if (firstBrace < 0 || lastBrace <= firstBrace) return [];
+  let parsed;
+  try {
+    parsed = JSON.parse(raw.slice(firstBrace, lastBrace + 1));
+  } catch {
+    return [];
+  }
+  const seen = new Set();
+  return (Array.isArray(parsed?.items) ? parsed.items : []).flatMap((item, index) => {
+    const title = cleanText(item?.title, 120).replace(/\s+/g, " ");
+    const priceJpy = Number(item?.priceJpy);
+    const confidence = Number(item?.confidence);
+    const normalized = `${title}|${priceJpy}`;
+    const readable = title.length >= 3
+      && !/[�□]{1,}|(?:不明|不鮮明|判読不能)/.test(title)
+      && /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}A-Za-z0-9]/u.test(title);
+    if (!readable || !Number.isInteger(priceJpy) || priceJpy < 100 || priceJpy > 20000 || confidence < 0.9 || seen.has(normalized)) return [];
+    seen.add(normalized);
+    return [{
+      url: `${sourceUrl}#ai-${index + 1}`,
+      title: `【チラシAI・要確認】${title}`,
+      priceJpy,
+      imageUrls: [imageUrl],
+      sourceName: "しまむら公式チラシ AI読取・要確認",
+    }];
+  }).slice(0, 20);
 }
 
 async function scanShimamuraSource(db, source) {
