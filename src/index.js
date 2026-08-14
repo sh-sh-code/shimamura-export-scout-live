@@ -253,6 +253,7 @@ const SHIMAMURA_SOURCES = [
 
 const MAX_SOURCE_BYTES = 1_500_000;
 const MAX_SNAPSHOT_BYTES = 2_000_000;
+const MAX_FLYER_IMAGE_BYTES = 8_000_000;
 const GITHUB_SNAPSHOT_URL = "https://raw.githubusercontent.com/sh-sh-code/shimamura-export-scout/main/data/shimamura-products.json";
 const FLYER_INDEX_URL = "https://www.shimamura.gr.jp/shimamura/flier/?g=shimamura";
 const FALLBACK_FLYER_ID = "14467";
@@ -386,9 +387,24 @@ async function scanOfficialFlyer(db, ai) {
     detail = "Workers AI binding unavailable";
   } else {
     try {
+      const imageResponse = await fetch(imageUrl, {
+        headers: {
+          accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+          referer: FLYER_INDEX_URL,
+          "user-agent": "Mozilla/5.0 (compatible; ExportScout/0.1; low-frequency flyer monitor)",
+        },
+        redirect: "follow",
+        signal: AbortSignal.timeout(20000),
+      });
+      if (!imageResponse.ok) throw new Error(`flyer image HTTP ${imageResponse.status}`);
+      const contentType = String(imageResponse.headers.get("content-type") || "").split(";")[0].toLowerCase();
+      if (!/^image\/(?:jpeg|png|webp)$/.test(contentType)) throw new Error(`unsupported flyer image type: ${contentType || "unknown"}`);
+      const imageBody = await readBytesLimited(imageResponse, MAX_FLYER_IMAGE_BYTES);
+      if (imageBody.exceeded) throw new Error("flyer image exceeded size limit");
+      const imageDataUrl = `data:${contentType};base64,${bytesToBase64(imageBody.bytes)}`;
       const response = await ai.run(FLYER_VISION_MODEL, {
         task: "query",
-        image: imageUrl,
+        image: imageDataUrl,
         question: [
           "この日本語の小売チラシから、商品名と税込価格が両方とも明瞭に読める商品だけを抽出してください。",
           "数字や商品名が少しでも不鮮明なら除外し、推測・補完・一般知識の追加はしないでください。",
@@ -535,6 +551,46 @@ async function readTextLimited(response, maxBytes) {
     reader.releaseLock();
   }
   return { text, exceeded };
+}
+
+async function readBytesLimited(response, maxBytes) {
+  if (!response.body) return { bytes: new Uint8Array(), exceeded: false };
+  const reader = response.body.getReader();
+  const chunks = [];
+  let total = 0;
+  let exceeded = false;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        exceeded = true;
+        await reader.cancel();
+        break;
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  if (exceeded) return { bytes: new Uint8Array(), exceeded: true };
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return { bytes, exceeded: false };
+}
+
+function bytesToBase64(bytes) {
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+  }
+  return btoa(binary);
 }
 
 function parseShimamuraProducts(htmlText, sourceUrl) {
